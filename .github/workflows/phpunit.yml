@@ -26,4 +26,4 @@ jobs:
     - name: PHPUnit (graychen)
       uses: Graychen/phpunit-action@v1.0.0
       with:
-        config: phpunit.xml.dist
+        config: phpunit.xml
