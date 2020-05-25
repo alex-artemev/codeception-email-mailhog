@@ -13,7 +13,7 @@ namespace Codeception\Module;
 use Codeception\Email\EmailServiceProvider;
 use Codeception\Email\TestsEmails;
 use Codeception\Module;
-use Codeception\TestCase;
+use Codeception\TestInterface;
 use Exception;
 use GuzzleHttp\Client;
 
@@ -21,6 +21,26 @@ class MailHog extends Module
 {
     use TestsEmails;
     use EmailServiceProvider;
+
+    /**
+     * Codeception exposed variables.
+     *
+     * @var array
+     */
+    protected $config = [
+        'url',
+        'port',
+        'guzzleRequestOptions',
+        'deleteEmailsAfterScenario',
+        'timeout',
+    ];
+
+    /**
+     * Codeception required variables.
+     *
+     * @var array
+     */
+    protected $requiredFields = ['url', 'port'];
 
     /**
      * HTTP Client to interact with MailHog.
@@ -57,55 +77,27 @@ class MailHog extends Module
      */
     protected $openedEmail;
 
-    /**
-     * Codeception exposed variables.
-     *
-     * @var array
-     */
-    protected $config = ['url', 'port', 'guzzleRequestOptions', 'deleteEmailsAfterScenario', 'timeout'];
-
-    /**
-     * Codeception required variables.
-     *
-     * @var array
-     */
-    protected $requiredFields = ['url', 'port'];
-
     public function _initialize(): void
     {
         $url = trim($this->config['url'], '/') . ':' . $this->config['port'];
 
-        $timeout = $this->config['timeout'] ?? 1.0;
-        $this->mailhog = new Client(['base_uri' => $url, 'timeout' => $timeout]);
-
-        if (isset($this->config['guzzleRequestOptions'])) {
+        $config = ['base_uri' => $url, 'timeout' => $this->config['timeout'] ?? 1];
+        if (isset($this->config['guzzleRequestOptions']) && is_array($this->config['guzzleRequestOptions'])) {
             foreach ($this->config['guzzleRequestOptions'] as $option => $value) {
-                $this->mailhog->setDefaultOption($option, $value);
+                $config[$option] = $value;
             }
         }
+
+        $this->mailhog = new Client($config);
     }
 
     /**
      * Method executed after each scenario.
      */
-    public function _after(TestCase $test): void
+    public function _after(TestInterface $test): void
     {
         if (isset($this->config['deleteEmailsAfterScenario']) && $this->config['deleteEmailsAfterScenario']) {
             $this->deleteAllEmails();
-        }
-    }
-
-    /**
-     * Delete All Emails.
-     *
-     * Accessible from tests, deletes all emails
-     */
-    public function deleteAllEmails(): void
-    {
-        try {
-            $this->mailhog->request('DELETE', '/api/v1/messages');
-        } catch (Exception $e) {
-            $this->fail('Exception: ' . $e->getMessage());
         }
     }
 
@@ -120,11 +112,10 @@ class MailHog extends Module
 
         try {
             $response = $this->mailhog->request('GET', '/api/v1/messages');
-            $this->fetchedEmails = json_decode($response->getBody());
+            $this->fetchedEmails = json_decode($response->getBody(), false);
         } catch (Exception $e) {
             $this->fail('Exception: ' . $e->getMessage());
         }
-
         $this->sortEmails($this->fetchedEmails);
 
         // by default, work on all emails
@@ -216,11 +207,25 @@ class MailHog extends Module
     }
 
     /**
+     * Delete All Emails.
+     *
+     * Accessible from tests, deletes all emails
+     */
+    public function deleteAllEmails(): void
+    {
+        try {
+            $this->mailhog->request('DELETE', '/api/v1/messages');
+        } catch (Exception $e) {
+            $this->fail('Exception: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Open Next Unread Email.
      *
      * Pops the most recent unread email and assigns it as the email to conduct tests on
      */
-    protected function openNextUnreadEmail(): void
+    public function openNextUnreadEmail(): void
     {
         $this->openedEmail = $this->getMostRecentUnreadEmail();
     }
@@ -274,11 +279,11 @@ class MailHog extends Module
     {
         try {
             $response = $this->mailhog->request('GET', "/api/v1/messages/{$id}");
+
+            return json_decode($response->getBody(), false);
         } catch (Exception $e) {
             $this->fail('Exception: ' . $e->getMessage());
         }
-
-        return json_decode($response->getBody());
     }
 
     /**
@@ -519,7 +524,7 @@ class MailHog extends Module
      *
      * @return int Which email should go first
      */
-    public static function sortEmailsByCreationDatePredicate($emailA, $emailB): int
+    protected static function sortEmailsByCreationDatePredicate($emailA, $emailB): int
     {
         $sortKeyA = $emailA->Content->Headers->Date;
         $sortKeyB = $emailB->Content->Headers->Date;
