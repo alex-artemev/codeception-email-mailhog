@@ -291,6 +291,8 @@ JSON;
 
     public function testOpenNextUnreadEmailNegative(): void
     {
+        $this->mailHog->setUnreadInbox([]);
+
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Unread Inbox is Empty');
 
